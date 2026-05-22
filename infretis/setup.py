@@ -428,10 +428,30 @@ def expand_ensemble_move_policy(config: dict) -> None:
     """Expand `simulation.ensemble_move_policy` into canonical fields.
 
     No-op when the section is absent or `enabled = false`. Validates the
-    full ergonomic block before mutating `config`. On success, removes the
-    `ensemble_move_policy` subsection so restarts and re-runs are idempotent.
-    Raises `TOMLConfigError` on any malformed input or canonical-field
-    conflict (default `conflict_policy = "error"`).
+    full ergonomic block before mutating `config`.
+
+    Two modes, distinguished by the presence of a top-level `[infinit]`
+    table:
+
+    * One-shot mode (no `[infinit]`): the policy is a setup-time
+      convenience. Canonical fields (`simulation.shooting_moves`,
+      `simulation.tis_set.mwf_subcycle_small[_by_ensemble]`) must not
+      pre-exist -- two competing sources of truth is a `TOMLConfigError`.
+      After a successful expansion the `ensemble_move_policy` section is
+      stripped, so restart files carry only canonical fields and a re-run
+      is a no-op.
+
+    * Infinit mode (`[infinit]` present): the policy is the *persistent*
+      source of truth for move generation across `inft infinit`
+      iterations. Pre-existing canonical fields are expected (an earlier
+      iteration / restart TOML generated them) and are overwritten from
+      the policy rather than treated as a conflict. The
+      `ensemble_move_policy` section is kept so every subsequent
+      setup/update cycle regenerates `shooting_moves` -- including after
+      the ensemble count changes.
+
+    Raises `TOMLConfigError` on any malformed input or, in one-shot mode,
+    a canonical-field conflict (default `conflict_policy = "error"`).
 
     Ergonomic semantics: "000" ([0-]) and "001" ([0+]) are protected
     default-sh ensembles and are never assigned wf/mwf here. `default_move`
@@ -454,6 +474,11 @@ def expand_ensemble_move_policy(config: dict) -> None:
         # passes see a clean config and restart files do not carry it.
         sim.pop("ensemble_move_policy", None)
         return
+
+    # `inft infinit` re-runs setup every iteration; there the policy is the
+    # persistent owner of the canonical move fields rather than a one-shot
+    # convenience. Detected purely from the top-level `[infinit]` table.
+    infinit_mode = "infinit" in config
 
     conflict_policy = policy.get("conflict_policy", "error")
     if conflict_policy != "error":
@@ -547,27 +572,44 @@ def expand_ensemble_move_policy(config: dict) -> None:
             )
 
     # Conflict checks — only after validation succeeds, before any mutation.
+    # In one-shot mode a pre-existing canonical field means two competing
+    # sources of truth, which is an error. In infinit mode the policy owns
+    # those fields and regenerates them every iteration, so a pre-existing
+    # value (from an earlier iteration or the restart TOML) is expected and
+    # simply overwritten below.
     tis_set = sim["tis_set"]
-    if "shooting_moves" in sim:
-        raise TOMLConfigError(
-            "ensemble_move_policy conflicts with simulation.shooting_moves; "
-            "remove one (default conflict_policy='error')"
-        )
-    if "mwf_subcycle_small" in tis_set:
-        raise TOMLConfigError(
-            "ensemble_move_policy conflicts with "
-            "simulation.tis_set.mwf_subcycle_small; remove one"
-        )
-    if "mwf_subcycle_small_by_ensemble" in tis_set:
-        raise TOMLConfigError(
-            "ensemble_move_policy conflicts with "
-            "simulation.tis_set.mwf_subcycle_small_by_ensemble; remove one"
-        )
+    if not infinit_mode:
+        if "shooting_moves" in sim:
+            raise TOMLConfigError(
+                "ensemble_move_policy conflicts with "
+                "simulation.shooting_moves; remove one "
+                "(default conflict_policy='error')"
+            )
+        if "mwf_subcycle_small" in tis_set:
+            raise TOMLConfigError(
+                "ensemble_move_policy conflicts with "
+                "simulation.tis_set.mwf_subcycle_small; remove one"
+            )
+        if "mwf_subcycle_small_by_ensemble" in tis_set:
+            raise TOMLConfigError(
+                "ensemble_move_policy conflicts with "
+                "simulation.tis_set.mwf_subcycle_small_by_ensemble; remove one"
+            )
 
-    # Commit.
+    # Commit. The policy fully owns these canonical fields, so drop any
+    # stale values first (in one-shot mode the conflict checks above already
+    # guarantee there are none; in infinit mode this clears the previous
+    # iteration's output). The result then reflects only the current policy.
     sim["shooting_moves"] = moves
+    tis_set.pop("mwf_subcycle_small", None)
+    tis_set.pop("mwf_subcycle_small_by_ensemble", None)
     if default_small is not None:
         tis_set["mwf_subcycle_small"] = int(default_small)
     if by_ensemble:
         tis_set["mwf_subcycle_small_by_ensemble"] = by_ensemble
-    sim.pop("ensemble_move_policy", None)
+
+    if not infinit_mode:
+        # One-shot mode: strip the section so restart files carry only the
+        # canonical fields and a re-run is a no-op. In infinit mode the
+        # section is kept so every iteration regenerates from it.
+        sim.pop("ensemble_move_policy", None)
