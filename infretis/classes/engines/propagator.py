@@ -43,6 +43,14 @@ if not os.path.isdir(cwd):
 print(f"Changing dir to {cwd}")
 os.chdir(cwd)
 
+# for writing all or a subselection as netcdf, without velocities
+if hasattr(calc, "write_pos_netcdf"):
+    if not hasattr(calc, "subsel_netcdf"):
+        calc.write_pos_netcdf = False
+        print("Setting 'write_pos_netcdf' to False since 'subsel_netcdf' was not specified in calculator", file=logger, flush=True)
+    else:
+        from ase.io.netcdftrajectory import NetCDFTrajectory
+
 idle_time = 0
 
 while True:
@@ -105,7 +113,9 @@ while True:
         msg_file.open()
 
         dyn = Integrator(atoms, **int_set)
-        traj = traj = Trajectory(traj_file, "w")
+        traj = Trajectory(traj_file, "w")
+        if calc.write_pos_netcdf:
+            traj_netcdf = NetCDFTrajectory(traj_file.replace(".traj", ".nc"), mode = "w")
         step_nr = 0
         ekin = []
         vpot = []
@@ -130,6 +140,10 @@ while True:
                 # NOTE: Writing atoms removes all results from
                 # the calculator (and therefore atoms)!
                 traj.write(atoms, forces=forces, energy=energy, stress=stress)
+                if calc.write_pos_netcdf:
+                    atoms_netcdf = atoms[calc.subsel_netcdf]
+                    del atoms_netcdf.arrays["momenta"]
+                    traj_netcdf.write(atoms_netcdf)
                 system.pos = atoms.positions
                 system.vel = atoms.get_velocities()
                 system.box = atoms.cell.diagonal()
