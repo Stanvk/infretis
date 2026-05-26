@@ -50,6 +50,8 @@ if hasattr(calc, "write_pos_netcdf"):
         print("Setting 'write_pos_netcdf' to False since 'subsel_netcdf' was not specified in calculator", file=logger, flush=True)
     else:
         from ase.io.netcdftrajectory import NetCDFTrajectory
+else:
+    calc.write_pos_netcdf = False
 
 idle_time = 0
 
@@ -90,7 +92,7 @@ while True:
                     else:
                         print(f"{wname} " + line, file=logger, flush=True)
                         initial_conf, subcycles, traj_file, cwd, msg_file_name, input_path, _ = line.split()
-                        subcycles = int(subcycles)
+                        calc.subcycles = int(subcycles)
                         break
 
         system = read_stuff("system", cwd)
@@ -126,7 +128,7 @@ while True:
         t0 = time.time()
         # integrator step is taken at the end of every loop,
         # such that frame 0 is also written
-        print(f"{wname}: Starting {subcycles*path.maxlen} steps", file=logger, flush=True)
+        print(f"{wname}: Starting {subcycles*path.maxlen} steps with subcycle {subcycle}", file=logger, flush=True)
         for i in range(subcycles * path.maxlen):
             #print(f"step {i} of {subcycles*path.maxlen}", file=logger, flush=True)
             energy = calc.results["energy"]
