@@ -128,7 +128,7 @@ while True:
         t0 = time.time()
         # integrator step is taken at the end of every loop,
         # such that frame 0 is also written
-        print(f"{wname}: Starting {subcycles*path.maxlen} steps with subcycle {subcycle}", file=logger, flush=True)
+        print(f"{wname}: Starting {subcycles*path.maxlen} steps with subcycle {subcycles}", file=logger, flush=True)
         for i in range(subcycles * path.maxlen):
             #print(f"step {i} of {subcycles*path.maxlen}", file=logger, flush=True)
             energy = calc.results["energy"]
