@@ -92,7 +92,8 @@ while True:
                     else:
                         print(f"{wname} " + line, file=logger, flush=True)
                         initial_conf, subcycles, traj_file, cwd, msg_file_name, input_path, _ = line.split()
-                        calc.subcycles = int(subcycles)
+                        subcycles = int(subcycles)
+                        calc.subcycles = subcycles
                         break
 
         system = read_stuff("system", cwd)
