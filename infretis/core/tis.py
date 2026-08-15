@@ -51,6 +51,48 @@ def log_mdlogs(inp: str) -> None:
                     )
 
 
+# --- optional two-way-shot recorder (enable via tis_set.record_shots) --------
+# Populated by shoot() for every elementary two-way shot -- this covers both
+# 'sh' moves and each 'wf' jump, since wire_fencing() routes every jump through
+# shoot(). Drained by run_md() into md_items["shots"] and written (once, in the
+# main process) by REPEX.treat_output(); no worker ever writes concurrently.
+SHOT_RECORDS: List[Dict[str, Any]] = []
+
+
+def _record_shot(ens_set, shooting_point, path_back, path_forw, fwd_ok):
+    """Append one two-way-shot record if tis_set.record_shots is set.
+
+    Records the shooting-point order parameters (which carry the descriptor,
+    e.g. [lambda, phi, psi]) and the terminal order parameters of the backward
+    and forward halves. For a wf jump these terminals are the fence exits
+    (local-committor label); for a sh move they are the state ends (global
+    label). fwd_ok is False if the forward half hit maxlength (censored).
+    """
+    tis_set = ens_set.get("tis_set", {})
+    if not tis_set.get("record_shots", False):
+        return
+    try:
+        sp = [float(v) for v in shooting_point.order]
+        bwd = [float(v) for v in path_back.phasepoints[-1].order]
+        fwd = [float(v) for v in path_forw.phasepoints[-1].order]
+    except (IndexError, AttributeError, TypeError):
+        return
+    tag = ens_set.get("shot_tag", (ens_set.get("mc_move", "?"), -1))
+    SHOT_RECORDS.append(
+        {
+            "ens": ens_set.get("ens_name"),
+            "tag": list(tag),
+            "interfaces": [float(x) for x in ens_set.get("interfaces", [])],
+            "sp_order": sp,
+            "bwd_end": bwd,
+            "fwd_end": fwd,
+            "bwd_len": int(path_back.length),
+            "fwd_len": int(path_forw.length),
+            "fwd_ok": bool(fwd_ok),
+        }
+    )
+
+
 def run_md(md_items: Dict[str, Any]) -> Dict[str, Any]:
     """Execute shooting moves that require MD.
 
@@ -62,6 +104,7 @@ def run_md(md_items: Dict[str, Any]) -> Dict[str, Any]:
         the MD simulation.
     """
     # perform the hw move:
+    SHOT_RECORDS.clear()
     picked = md_items["picked"]
     subcycles0 = np.sum([i.steps for j in ENGINES.values() for i in j])
     _, trials, status = select_shoot(picked)
@@ -90,6 +133,7 @@ def run_md(md_items: Dict[str, Any]) -> Dict[str, Any]:
             # paths are to be stored
             picked[ens_num]["rej_traj"] = trial
 
+    md_items["shots"] = list(SHOT_RECORDS)
     md_items.update(
         {
             "status": status,
@@ -412,6 +456,7 @@ def shoot(
         path_forw, ens_set, shpt_copy, reverse=False
     )
     path_forw.time_origin = trial_path.time_origin
+    _record_shot(ens_set, shooting_point, path_back, path_forw, success_forw)
     # Now, the forward propagation could have failed by exceeding the
     # maximum length for the forward path. However, it could also fail
     # when we paste together so that the length is larger than the
@@ -517,6 +562,7 @@ def wire_fencing(
     succ_seg = 0
     for i in range(ens_set["tis_set"].get("n_jumps", 2)):
         logger.debug("Trying a new web with Wire Fencing, jump %i", i)
+        sub_ens["shot_tag"] = ("wf_jump", i)
         success, trial_seg, status = shoot(
             sub_ens, new_segment, engine, start_cond=("L", "R")
         )

@@ -917,6 +917,23 @@ class REPEX_state:
         """Treat output."""
         pn_news = []
         md_items["md_end"] = time.time()
+        # optional: log elementary two-way shots (tis_set.record_shots).
+        # Runs only here, in the main process -> no concurrent writes.
+        _shots = md_items.get("shots")
+        if _shots:
+            import json
+
+            _sp = os.path.join(
+                self.config["output"].get("data_dir", "./"), "shots.jsonl"
+            )
+            with open(_sp, "a", encoding="utf-8") as _fh:
+                for _r in _shots:
+                    _r = {
+                        **_r,
+                        "cstep": self.cstep,
+                        "mc_status": md_items.get("status"),
+                    }
+                    _fh.write(json.dumps(_r) + "\n")
         picked = md_items["picked"]
         traj_num = self.config["current"]["traj_num"]
 
