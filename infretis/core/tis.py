@@ -82,6 +82,8 @@ def _record_shot(ens_set, shooting_point, path_back, path_forw, fwd_ok):
         {
             "ens": ens_set.get("ens_name"),
             "tag": list(tag),
+            "is_extended": False,
+            "jump": int(tag[1]),
             "interfaces": [float(x) for x in ens_set.get("interfaces", [])],
             "sp_order": sp,
             "bwd_end": bwd,
@@ -89,6 +91,40 @@ def _record_shot(ens_set, shooting_point, path_back, path_forw, fwd_ok):
             "bwd_len": int(path_back.length),
             "fwd_len": int(path_forw.length),
             "fwd_ok": bool(fwd_ok),
+        }
+    )
+
+
+def _record_extended(ens_set, shooting_point, full_path, last_jump):
+    """Append a record for the EXTENDED (accepted) wire-fencing path.
+
+    Unlike the per-jump fence sub-shots, the extended path runs all the way to the
+    state definitions, so its two ends (phasepoints[0] / [-1]) are the *committed*
+    two-way-shot outcome for the last-jump shooting point. This is the data a
+    shooting / AIMMD committor needs. Guarded by tis_set.record_shots.
+    """
+    tis_set = ens_set.get("tis_set", {})
+    if not tis_set.get("record_shots", False):
+        return
+    try:
+        sp = [float(v) for v in shooting_point.order]
+        bwd = [float(v) for v in full_path.phasepoints[0].order]
+        fwd = [float(v) for v in full_path.phasepoints[-1].order]
+    except (IndexError, AttributeError, TypeError):
+        return
+    SHOT_RECORDS.append(
+        {
+            "ens": ens_set.get("ens_name"),
+            "tag": ["wf_extended", int(last_jump)],
+            "is_extended": True,
+            "jump": int(last_jump),
+            "interfaces": [float(x) for x in ens_set.get("interfaces", [])],
+            "sp_order": sp,
+            "bwd_end": bwd,
+            "fwd_end": fwd,
+            "bwd_len": 0,
+            "fwd_len": int(getattr(full_path, "length", 0)),
+            "fwd_ok": True,
         }
     )
 
@@ -560,6 +596,8 @@ def wire_fencing(
     sub_ens["tis_set"]["maxlength"] = ens_set["tis_set"]["maxlength"]
 
     succ_seg = 0
+    last_sp = None  # shooting point of the last accepted jump (for the extended record)
+    last_jump = -1  # index of that jump -> join key linking the extension to its wf_jump row
     for i in range(ens_set["tis_set"].get("n_jumps", 2)):
         logger.debug("Trying a new web with Wire Fencing, jump %i", i)
         sub_ens["shot_tag"] = ("wf_jump", i)
@@ -578,6 +616,11 @@ def wire_fencing(
             logger.debug("Acceptable Wire Fence link.")
             succ_seg += 1
             new_segment = trial_seg.copy()
+            try:  # shooting point index of this jump = generated[3]
+                last_sp = trial_seg.phasepoints[trial_seg.generated[3]].copy()
+                last_jump = i
+            except (IndexError, AttributeError, TypeError):
+                last_sp = None
     if succ_seg == 0:
         # No usable segments were generated
         trial_path = trial_seg
@@ -607,6 +650,10 @@ def wire_fencing(
     ), "WF: Path has an implausible start."
 
     trial_path.status = "ACC"
+    # Record the extended (committed) path: its ends are the two-way-shot state
+    # outcome for the last-jump shooting point (shooting/AIMMD committor data).
+    if last_sp is not None:
+        _record_extended(ens_set, last_sp, trial_path, last_jump)
     return True, trial_path, trial_path.status
 
 
