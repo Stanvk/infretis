@@ -988,6 +988,9 @@ def retis_swap_zero(
     logger.info("Initial point is: %s", shpt_copy.order)
     # Propagate it backward in time:
     path_tmp = path_old1.empty_path(maxlen=maxlen1 - 1)
+    
+    # define success, also if not allowed.
+    success = True
     if allowed:
         logger.info("Propagating for [0^-]")
         success, status = engine0.propagate(
@@ -1022,7 +1025,15 @@ def retis_swap_zero(
         path0.status = "ACC"
     # if propagation did not succeeed for some reason, reject the swap
     if not success:
-        return False, [path0, path_old0], path0.status
+        # Returning an active path here (either path_old0 or path_old1) makes the rejection
+        # bookkeeping renumber it and move its trajectory files into an
+        # archive, destroying the path the ensemble is still using.
+        path1 = path_old1.empty_path(maxlen=maxlen1)
+        phase_point = path_old0.phasepoints[-1].copy()
+        engine0.dump_phasepoint(phase_point, "swap_zero_rejected")
+        path1.append(phase_point)
+        path1.status = path0.status
+        return False, [path0, path1], path0.status
 
     # 2. Generate path for [0^+] from [0^-]:
     logger.info("Creating path for [0^+] from [0^-]")
