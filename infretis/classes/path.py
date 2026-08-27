@@ -391,8 +391,16 @@ def paste_paths(
     return new_path
 
 
-def load_path(pdir: str) -> Path:
-    """Load a path from the given directory."""
+def load_path(pdir: str, order_function=None) -> Path:
+    """Load a path from the given directory.
+
+    If ``order_function`` is given and provides ``recompute_order`` (e.g. the
+    online committor OP), the stored order values are recomputed with the
+    current order parameter. This is feature-cached: the stored features are
+    functions of the configuration only, so no trajectory read is needed --
+    used by infinit's interface refresh so interface placement rests on a
+    single, current order parameter.
+    """
     trajtxt = os.path.join(pdir, "traj.txt")
     ordertxt = os.path.join(pdir, "order.txt")
     assert os.path.isfile(trajtxt)
@@ -418,6 +426,12 @@ def load_path(pdir: str) -> Path:
     # load ordertxt
     with OrderPathFile(ordertxt, "r") as orderfile:
         orderdata = next(orderfile.load())["data"][:, 1:]
+
+    # optionally recompute the order with the current OP (feature-cached)
+    if order_function is not None and hasattr(
+        order_function, "recompute_order"
+    ):
+        orderdata = order_function.recompute_order(orderdata)
 
     path = Path()
     for snapshot, order in zip(traj["data"], orderdata):

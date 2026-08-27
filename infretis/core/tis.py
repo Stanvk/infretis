@@ -59,8 +59,13 @@ def log_mdlogs(inp: str) -> None:
 SHOT_RECORDS: List[Dict[str, Any]] = []
 
 
-def _record_shot(ens_set, shooting_point, path_back, path_forw, fwd_ok):
+def _record_shot(ens_set, shooting_point, path_back, path_forw, fwd_ok,
+                 source_pn=None):
     """Append one two-way-shot record if tis_set.record_shots is set.
+
+    ``source_pn`` is the path number of the active path this shot was taken
+    from -- with ``ens`` and the wf ``jump`` it makes the record fully traceable
+    to where in the TIS run the shot was acquired.
 
     Records the shooting-point order parameters (which carry the descriptor,
     e.g. [lambda, phi, psi]) and the terminal order parameters of the backward
@@ -81,6 +86,7 @@ def _record_shot(ens_set, shooting_point, path_back, path_forw, fwd_ok):
     SHOT_RECORDS.append(
         {
             "ens": ens_set.get("ens_name"),
+            "source_pn": None if source_pn is None else int(source_pn),
             "tag": list(tag),
             "is_extended": False,
             "jump": int(tag[1]),
@@ -95,7 +101,8 @@ def _record_shot(ens_set, shooting_point, path_back, path_forw, fwd_ok):
     )
 
 
-def _record_extended(ens_set, shooting_point, full_path, last_jump):
+def _record_extended(ens_set, shooting_point, full_path, last_jump,
+                     source_pn=None):
     """Append a record for the EXTENDED (accepted) wire-fencing path.
 
     Unlike the per-jump fence sub-shots, the extended path runs all the way to the
@@ -115,6 +122,7 @@ def _record_extended(ens_set, shooting_point, full_path, last_jump):
     SHOT_RECORDS.append(
         {
             "ens": ens_set.get("ens_name"),
+            "source_pn": None if source_pn is None else int(source_pn),
             "tag": ["wf_extended", int(last_jump)],
             "is_extended": True,
             "jump": int(last_jump),
@@ -492,7 +500,15 @@ def shoot(
         path_forw, ens_set, shpt_copy, reverse=False
     )
     path_forw.time_origin = trial_path.time_origin
-    _record_shot(ens_set, shooting_point, path_back, path_forw, success_forw)
+    # provenance: the active path shot from (wf jumps carry it via sub_ens,
+    # since the per-jump segment has no path number of its own)
+    src_pn = getattr(path, "path_number", None)
+    if src_pn is None:
+        src_pn = ens_set.get("source_pn")
+    _record_shot(
+        ens_set, shooting_point, path_back, path_forw, success_forw,
+        source_pn=src_pn,
+    )
     # Now, the forward propagation could have failed by exceeding the
     # maximum length for the forward path. However, it could also fail
     # when we paste together so that the length is larger than the
@@ -591,6 +607,8 @@ def wire_fencing(
         "ens_name": ens_set["ens_name"],
         "start_cond": ens_set["start_cond"],
         "tis_set": ens_set["tis_set"],
+        # provenance for every jump/extended record: the WF source active path
+        "source_pn": getattr(trial_path, "path_number", None),
     }
     sub_ens["tis_set"]["allowmaxlength"] = True
     sub_ens["tis_set"]["maxlength"] = ens_set["tis_set"]["maxlength"]
@@ -653,7 +671,10 @@ def wire_fencing(
     # Record the extended (committed) path: its ends are the two-way-shot state
     # outcome for the last-jump shooting point (shooting/AIMMD committor data).
     if last_sp is not None:
-        _record_extended(ens_set, last_sp, trial_path, last_jump)
+        _record_extended(
+            ens_set, last_sp, trial_path, last_jump,
+            source_pn=sub_ens.get("source_pn"),
+        )
     return True, trial_path, trial_path.status
 
 

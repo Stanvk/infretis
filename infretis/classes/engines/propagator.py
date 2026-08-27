@@ -104,6 +104,11 @@ while True:
         left = read_stuff("left", cwd)
         right = read_stuff("right", cwd)
 
+        # pick up online-trained weights (committor OP) before propagating, so
+        # this process computes q with the latest net the worker checkpointed
+        if hasattr(order_function, "reload_weights"):
+            order_function.reload_weights()
+
         # create engine and order function
         atoms = read(initial_conf)
         if isinstance(atoms, list):
