@@ -452,6 +452,20 @@ def test_zero_swaps(
         assert end == "R"
         assert middle == "M"
 
+    # unittest that triggers allowed=False
+    if zero_swap_move.__name__ == "retis_swap_zero":
+        pathdir = PosixPath(tmp_dir / "not_allowed")
+        pathdir.mkdir()
+        turtle.exe_dir = str(pathdir.resolve())
+        picked[-1]["ens"]["interfaces"] = (-np.inf, -0.99, -0.99)
+        picked[-1]["ens"]["start_cond"] = "R"
+        # force the [0-] path to end left of the outer interface so that
+        # retis_swap_zero skips propagation (allowed=False)
+        picked[-1]["traj"].phasepoints[-1].order = [-2.0]
+
+        success, _, _ = zero_swap_move(picked, engines)
+        assert success is False
+
 
 class MockRandomGenerator():
     """A **mock** random generator, useful **only for testing**.
