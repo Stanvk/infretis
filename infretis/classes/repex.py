@@ -923,6 +923,18 @@ class REPEX_state:
         if _shots:
             import json
 
+            # Path numbers are assigned a few lines below (out_traj.path_number
+            # = traj_num). Resolve them here so shot rows carry stable numbers:
+            # pn_old = shooting-point parent path, pn_new = number the trial
+            # path will get (== pn_old on rejection). swap-zero never emits
+            # shots, so picked is always single-ensemble when _shots is set.
+            _picked_one = next(iter(md_items["picked"].values()))
+            _pn_old = _picked_one["pn_old"]
+            _pn_new = (
+                self.config["current"]["traj_num"]
+                if md_items.get("status") == "ACC"
+                else _pn_old
+            )
             _sp = os.path.join(
                 self.config["output"].get("data_dir", "./"), "shots.jsonl"
             )
@@ -932,6 +944,8 @@ class REPEX_state:
                         **_r,
                         "cstep": self.cstep,
                         "mc_status": md_items.get("status"),
+                        "pn_old": _pn_old,
+                        "pn_new": _pn_new,
                     }
                     _fh.write(json.dumps(_r) + "\n")
         picked = md_items["picked"]
