@@ -14,6 +14,8 @@ from infretis.classes.engines.ase_external_engine import ASEExternalEngine
 from infretis.classes.engines.cp2k import CP2KEngine
 from infretis.classes.engines.gromacs import GromacsEngine
 from infretis.classes.engines.lammps import LAMMPSEngine
+from infretis.classes.engines.lammps_cgdna import LAMMPSCGDNAEngine
+from infretis.classes.engines.oxdna import OxDNAEngine
 
 if importlib.util.find_spec("turtlemd") is not None:
     from infretis.classes.engines.turtlemdengine import TurtleMDEngine
@@ -44,6 +46,8 @@ def create_engine(
         "gromacs": {"class": GromacsEngine},
         "cp2k": {"class": CP2KEngine},
         "lammps": {"class": LAMMPSEngine},
+        "lammps_cgdna": {"class": LAMMPSCGDNAEngine},
+        "oxdna": {"class": OxDNAEngine},
         "ase": {"class": ASEEngine},
         "ase_external": {"class": ASEExternalEngine},
     }
