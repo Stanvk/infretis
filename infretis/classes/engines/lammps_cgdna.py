@@ -23,6 +23,8 @@ Velocity reversal negates v and the angular momentum. Thermostats and
 barostats that cannot be reversed from the stored state (fix langevin,
 Nose-Hoover nvt/npt/nph, temp/*, press/*, ...) are rejected.
 Only ``units lj`` is supported; ``temperature`` is in LAMMPS lj units.
+The input must flush the thermo output (``thermo_modify ... flush yes``),
+because LAMMPS is stopped as soon as a path ends.
 """
 
 from __future__ import annotations
@@ -87,6 +89,17 @@ def check_cgdna_input(lmp_inp: Union[str, Path]) -> str:
     missing = [cmd for cmd in MANDATORY if not any(cmd in ln for ln in lines)]
     if missing:
         raise ValueError(f"Missing commands in {lmp_inp}:\n{missing}")
+    # LAMMPS is stopped as soon as a path ends. Without flushing, the last
+    # thermo lines (the potential energies) are still in LAMMPS' buffer
+    # and are lost.
+    if not any(ln.startswith("thermo_modify") and "flush yes" in ln
+               for ln in lines):
+        raise ValueError(
+            f"{lmp_inp}: add 'flush yes' to thermo_modify, e.g. "
+            "'thermo_modify norm no flush yes'. LAMMPS is stopped when a "
+            "path ends, and without flushing the last potential energies "
+            "are lost from the log."
+        )
     integrators = []
     for line in lines:
         tok = line.split()
